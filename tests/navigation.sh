@@ -126,10 +126,11 @@ initial_focus="$(tmux -S "$sock" display-message -p -c "$client" \
   '#{pane_title}')"
 initial_hint="$(tmux -S "$sock" capture-pane -p -t "$sidebar" | sed -n '2p')"
 inactive_hint_hidden=0
-if [ -n "$initial_hint" ] \
-  && ! printf '%s' "$initial_hint" | grep -Eq 'esc clear|f status|/ search'; then
-  inactive_hint_hidden=1
-fi
+case "$initial_hint" in
+  'u update · / search') inactive_hint_hidden=1 ;; # release alert is intentional
+  *'esc clear'*|*'f status'*) ;;
+  ?*) inactive_hint_hidden=1 ;; # first session row: no inactive hint/spacer
+esac
 
 # Opening prefix+w from the sidebar zooms that pane while choose-tree is open.
 # The temporary full-window width must never be adopted as the user's sidebar
@@ -617,6 +618,39 @@ for _ in $(seq 1 20); do
   sleep 0.05
 done
 
+# Compact mode keeps session/status/agent rows, hides metadata/title rows, and
+# resizes every preserved sidebar. A second c restores configured full width.
+printf 'c' >&9
+compact_works=0
+compact_widths=''
+compact_cursor=''
+for _ in $(seq 1 60); do
+  compact_widths="$(tmux -S "$sock" list-panes -a \
+    -f '#{==:#{pane_title},agents-mon}' -F '#{pane_width}' | sort -u | tr '\n' ' ')"
+  compact_cursor="$(tmux -S "$sock" capture-pane -p -t "$sidebar" |
+    sed -n '/❯/p' | head -n 1)"
+  compact_option="$(tmux -S "$sock" show-option -gqv @agents-mon-compact)"
+  if [ "$compact_widths" = '18 ' ] && [ "$compact_option" = 1 ] \
+    && printf '%s' "$compact_cursor" | grep -Eq 'codex[[:space:]]*$'; then
+    compact_works=1
+    break
+  fi
+  sleep 0.05
+done
+printf 'c' >&9
+compact_restore_works=0
+full_widths=''
+for _ in $(seq 1 60); do
+  full_widths="$(tmux -S "$sock" list-panes -a \
+    -f '#{==:#{pane_title},agents-mon}' -F '#{pane_width}' | sort -u | tr '\n' ' ')"
+  compact_option="$(tmux -S "$sock" show-option -gqv @agents-mon-compact)"
+  if [ "$full_widths" = '30 ' ] && [ -z "$compact_option" ]; then
+    compact_restore_works=1
+    break
+  fi
+  sleep 0.05
+done
+
 printf 'q' >&9
 exit_table=agents-mon
 q_left=0
@@ -799,8 +833,8 @@ if [ "$table" = agents-mon ] && [ "$initial_focus" = agents-mon ] \
   && [ "$search_accept_works" -eq 1 ] && [ "$search_jk_works" -eq 1 ] \
   && [ "$search_blur_works" -eq 1 ] && [ "$blocked_filter_works" -eq 1 ] \
   && [ "$working_filter_works" -eq 1 ] && [ "$idle_filter_works" -eq 1 ] \
-  && [ "$all_filter_works" -eq 1 ] \
-  && [ "$exit_table" = root ] && [ "$q_left" -eq 1 ] \
+  && [ "$all_filter_works" -eq 1 ] && [ "$compact_works" -eq 1 ] \
+  && [ "$compact_restore_works" -eq 1 ] && [ "$exit_table" = root ] && [ "$q_left" -eq 1 ] \
   && [ "$escape_ready" -eq 1 ] && [ "$escape_reset" -eq 1 ] \
   && [ "$escape_left" -eq 1 ] && [ "$close_ready" -eq 1 ] \
   && [ "$q_closed" -eq 1 ] \
@@ -808,6 +842,6 @@ if [ "$table" = agents-mon ] && [ "$initial_focus" = agents-mon ] \
   && [ "$notification_stale_noop" -eq 1 ]; then
   echo "ok   attached-client-jk-navigation"
 else
-  echo "FAIL navigation-key-table: table=$table initial-focus=[$initial_focus] initial-hint=[$inactive_hint_hidden/$initial_hint] chooser=[$chooser_open_unzoomed/$chooser_state/$chooser_width] ctrl-l=[$ctrl_l_works/$ctrl_l_table/$ctrl_l_focus] missing-client=[$missing_client_noop/$missing_client_table/$missing_secondary_table/$missing_client_focus] empty-click=[$empty_click_works/$empty_click_table/$secondary_click_table/$empty_click_focus/green=$empty_click_green] stale-click=[$stale_click_works/$stale_click_table/$stale_click_focus] non-agent=[$non_agent_locations_work/$location_table/$location_focus] agent-missing-client=[$agent_missing_client_noop/$agent_missing_primary_table/$agent_missing_secondary_table/$agent_missing_focus] vanished-sidebar=[$vanished_sidebar_noop/$vanished_sidebar_table/$vanished_sidebar_focus] valid-click=[$valid_click_works/$valid_click_table/$valid_click_focus/$valid_target] picker=[$picker_open/$picker_reclaimed/$picker_table/$picker_before/$picker_return] after-j=$table_after_j control=[$control/$control_flags] first=[$first] second=[$second] third=[$third] wheel=[$wheel_down/$wheel_up/fallback=$wheel_fallback_works/keys=$wheel_keys] return=[$return_table/$return_focus] fourth=[$fourth] search=[$search_works/$search_targets/$search_table/$search_frame/$search_hint/accept=$search_accept_works/$accept_table/$accept_frame/$accept_hint/jk=$search_jk_works/$accepted_cursor/$filtered_cursor/blur=$search_blur_works/$blur_table/$blur_targets] filters=[$blocked_filter_works/$blocked_targets/$blocked_frame/$blocked_hint/$working_filter_works/$working_targets/$working_frame/$idle_filter_works/$idle_targets/$idle_frame/$all_filter_works/$all_targets/$all_frame] q-leave=[$q_left/$exit_table/$exit_focus] escape=[$escape_ready/$escape_reset/$escape_left/$escape_table/$escape_focus/$escape_frame] Q-close=[$close_ready/$q_closed/$close_table] notification-open=[$notification_open_works/$notification_stale_noop/$notification_client]"
+  echo "FAIL navigation-key-table: table=$table initial-focus=[$initial_focus] initial-hint=[$inactive_hint_hidden/$initial_hint] chooser=[$chooser_open_unzoomed/$chooser_state/$chooser_width] ctrl-l=[$ctrl_l_works/$ctrl_l_table/$ctrl_l_focus] missing-client=[$missing_client_noop/$missing_client_table/$missing_secondary_table/$missing_client_focus] empty-click=[$empty_click_works/$empty_click_table/$secondary_click_table/$empty_click_focus/green=$empty_click_green] stale-click=[$stale_click_works/$stale_click_table/$stale_click_focus] non-agent=[$non_agent_locations_work/$location_table/$location_focus] agent-missing-client=[$agent_missing_client_noop/$agent_missing_primary_table/$agent_missing_secondary_table/$agent_missing_focus] vanished-sidebar=[$vanished_sidebar_noop/$vanished_sidebar_table/$vanished_sidebar_focus] valid-click=[$valid_click_works/$valid_click_table/$valid_click_focus/$valid_target] picker=[$picker_open/$picker_reclaimed/$picker_table/$picker_before/$picker_return] after-j=$table_after_j control=[$control/$control_flags] first=[$first] second=[$second] third=[$third] wheel=[$wheel_down/$wheel_up/fallback=$wheel_fallback_works/keys=$wheel_keys] return=[$return_table/$return_focus] fourth=[$fourth] search=[$search_works/$search_targets/$search_table/$search_frame/$search_hint/accept=$search_accept_works/$accept_table/$accept_frame/$accept_hint/jk=$search_jk_works/$accepted_cursor/$filtered_cursor/blur=$search_blur_works/$blur_table/$blur_targets] filters=[$blocked_filter_works/$blocked_targets/$blocked_frame/$blocked_hint/$working_filter_works/$working_targets/$working_frame/$idle_filter_works/$idle_targets/$idle_frame/$all_filter_works/$all_targets/$all_frame] compact=[$compact_works/$compact_restore_works/$compact_option/$compact_widths/$full_widths/$compact_cursor] q-leave=[$q_left/$exit_table/$exit_focus] escape=[$escape_ready/$escape_reset/$escape_left/$escape_table/$escape_focus/$escape_frame] Q-close=[$close_ready/$q_closed/$close_table] notification-open=[$notification_open_works/$notification_stale_noop/$notification_client]"
   exit 1
 fi

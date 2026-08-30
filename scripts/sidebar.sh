@@ -15,7 +15,9 @@ cleanup() {
   printf '\033[?25h'
   [ -n "${scan_pid:-}" ] && kill "$scan_pid" 2>/dev/null
   rm -f "$STATE_FILE" "$ROWS_FILE" "$SCAN_FILE" "$SCAN_FILE.partial"
-  if [ -n "${AGENTS_MON_PIN:-}" ] && [ ! -f "$AGENTS_MON_PIN.jump" ]; then
+  if [ -n "${AGENTS_MON_PIN:-}" ] \
+    && [ ! -f "$AGENTS_MON_PIN.jump" ] \
+    && [ ! -f "$AGENTS_MON_PIN.compact" ]; then
     rm -f "$AGENTS_MON_PIN"
   fi
   exit 0
@@ -67,6 +69,8 @@ visible=""    # filtered rows used by render/navigation/clicks
 query=""
 state_filter=""
 search_focused=""
+compact="$(tmux show-option -gqv @agents-mon-compact)"
+[ "$compact" = 1 ] || compact=""
 total_rows=0
 nrows=0
 sel=1
@@ -145,6 +149,27 @@ cycle_state_filter() {
 clear_filter() {
   query="" state_filter="" search_focused=""
   apply_filters
+}
+
+toggle_compact() {
+  local width
+  if [ -n "$compact" ]; then
+    compact=""
+    tmux set-option -gu @agents-mon-compact 2>/dev/null
+    width="$(tmux show-option -gqv @agents-mon-width)"
+    width="${width:-30}"
+  else
+    compact=1
+    tmux set-option -g @agents-mon-compact 1
+    width="$(tmux show-option -gqv @agents-mon-compact-width)"
+    width="${width:-18}"
+  fi
+  if [ -n "${AGENTS_MON_PIN:-}" ]; then
+    : > "$AGENTS_MON_PIN.compact"
+    exit 0
+  fi
+  tmux resize-pane -t "${TMUX_PANE:-}" -x "$width" 2>/dev/null
+  force_render=1
 }
 
 # Paint a selected row with a state-colored background, reasserting it after
@@ -234,7 +259,7 @@ EOF
 render() {
   local frame n=0 pane loc agent state cwd title mark cols rows cap used rest avail
   local client active idx filter_info="" header_hint room fg row_bg line clipped
-  local hdr="" pad="" width
+  local hdr="" pad="" width agent_display
   # tput can report the client size, not the pane's — ask tmux directly
   IFS=' ' read -r cols rows <<EOF
 $(tmux display-message -p -t "${TMUX_PANE:-}" '#{pane_width} #{pane_height}' 2>/dev/null)
@@ -321,15 +346,21 @@ EOF
         row_bg=""
       fi
       color_dot "$state"
-      rest="${loc#*:} $cwd"
-      avail=$((cols - 6 - ${#agent}))
-      [ "$avail" -gt 0 ] && rest="${rest:0:$avail}"
-      line=" $mark$dot $E[1m$agent$E[0m $E[2m$rest$E[0m"
-      bar "$line" $((6 + ${#agent} + ${#rest})) "$row_bg"
+      if [ -n "$compact" ]; then
+        agent_display="${agent:0:cols-5}"
+        line=" $mark$dot $E[1m$agent_display$E[0m"
+        bar "$line" $((5 + ${#agent_display})) "$row_bg"
+      else
+        rest="${loc#*:} $cwd"
+        avail=$((cols - 6 - ${#agent}))
+        [ "$avail" -gt 0 ] && rest="${rest:0:$avail}"
+        line=" $mark$dot $E[1m$agent$E[0m $E[2m$rest$E[0m"
+        bar "$line" $((6 + ${#agent} + ${#rest})) "$row_bg"
+      fi
       frame="$frame$line$E[K$NL"
       vis="$vis$pane$NL"
       used=$((used + 1))
-      if [ -n "$title" ] && [ "$used" -lt "$cap" ]; then
+      if [ -z "$compact" ] && [ -n "$title" ] && [ "$used" -lt "$cap" ]; then
         clipped="${title:0:cols-5}"
         line="     $E[2m$clipped$E[0m"
         bar "$line" $((5 + ${#clipped})) "$row_bg"
@@ -386,10 +417,10 @@ $E[1mkeys$E[0m$NL\
  Enter/l  jump to agent$NL\
  /        live search; Enter enables j/k$NL\
  f        select next state filter$NL\
+ c        compact / full view$NL\
  Esc      clear filters / show all$NL\
  u        update to the latest release$NL\
  q        close sidebar$NL\
- Esc      clear filters$NL\
  ?        this help$NL$NL\
 $E[2mpress any key to return$E[0m"
   IFS= read -rsn1
@@ -459,6 +490,7 @@ while :; do
       l) jump ;;
       /) focus_search ;;
       f) cycle_state_filter ;;
+      c) toggle_compact ;;
       u) update ;;
       '?') show_help ;;
       '') jump ;;  # Enter

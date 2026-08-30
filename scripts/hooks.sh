@@ -10,9 +10,10 @@ if awk -v v="$ver" 'BEGIN { exit !(v + 0 >= 3.2) }'; then
   # Server-side serialization also kills the old two-hooks race, no lock.
   # Guard: sidebar open, not already in this window, and never follow into pi.
   guard='#{&&:#{&&:#{!=:#{@agents-mon-sidebar},},#{!=:#{@agents-mon-sidebar-win},#{window_id}}},#{!=:#{session_name},pi}}'
+  width='#{?#{==:#{@agents-mon-compact},1},#{?#{@agents-mon-compact-width},#{@agents-mon-compact-width},18},#{?#{@agents-mon-width},#{@agents-mon-width},30}}'
   body="run -C 'set -g @agents-mon-prev-win #{@agents-mon-sidebar-win}'"
   body="$body ; run -C 'set -g @agents-mon-layout-#{window_id} \"#{window_layout}\"'"
-  body="$body ; run -C 'join-pane -hbf -d -l #{?#{@agents-mon-width},#{@agents-mon-width},30} -s #{@agents-mon-sidebar} -t #{pane_id}'"
+  body="$body ; run -C 'join-pane -hbf -d -l $width -s #{@agents-mon-sidebar} -t #{pane_id}'"
   body="$body ; run -C 'set -g @agents-mon-sidebar-win #{window_id}'"
   body="$body ; run-shell -b 'bash $DIR/scripts/restore.sh'"
   follow="if -F \"$guard\" { $body }"
@@ -97,6 +98,8 @@ tmux bind-key -T agents-mon / \
   "run-shell \"'$BIN' key 'search'\"; switch-client -T agents-mon-search"
 tmux bind-key -T agents-mon f \
   "run-shell \"'$BIN' key 'filter'\"; switch-client -T agents-mon"
+tmux bind-key -T agents-mon c \
+  "run-shell \"'$BIN' key 'compact'\"; switch-client -T agents-mon"
 bind_nav Space space agents-mon
 bind_nav Any space agents-mon
 bind_nav Enter enter root
@@ -155,4 +158,4 @@ for table in agents-mon agents-mon-search; do
     'if -Ft= "#{||:#{pane_in_mode},#{mouse_any_flag}}" "send-keys -M" "copy-mode -e; send-keys -M"'
   bind_wheel "$table" WheelDownPane down 'send-keys -M'
 done
-tmux set-option -g @agents-mon-nav-version 12
+tmux set-option -g @agents-mon-nav-version 13

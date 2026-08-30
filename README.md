@@ -113,8 +113,9 @@ Details worth knowing:
 - In the sidebar: `j`/`k` or `↑`/`↓` move the `❯` cursor, `Enter` or `l` jumps to
   the selected agent, and sidebar filtering uses `/` for live text search, `f`
   to select the next state in `all → blocked → working → idle → done → all`.
-  `Esc` clears all filters. During search, type normally (`j` and `k` are query text), then press
-  `Enter` to accept the query and enable `j`/`k` navigation across filtered
+  `c` toggles a compact session/agent-only view at a narrower width, and `Esc`
+  clears all filters. During search, type normally (`j` and `k` are query text),
+  then press `Enter` to accept the query and enable `j`/`k` navigation across filtered
   results; press `Enter` again to jump. `↑`/`↓` or `Ctrl-N`/`Ctrl-P` can move
   while typing, and `Ctrl-U` clears while staying in search. `Esc` exits search
   or filtered navigation, clears every filter, and restores the full list. State
@@ -140,7 +141,8 @@ set -g status-right '#{agents_mon} | %H:%M'
 ```tmux
 set -g @agents-mon-key 'A'          # toggle keybinding (prefix table)
 set -g @agents-mon-popup-key 'e'    # optional: dedicated key that always opens the popup
-set -g @agents-mon-width '30'       # width (defaults: split 30, popup 40)
+set -g @agents-mon-width '30'       # full-view width (defaults: split 30, popup 40)
+set -g @agents-mon-compact-width '18' # width after pressing c (default: 18)
 set -g @agents-mon-display 'popup'  # make the main key open a popup (default: left split)
 set -g @agents-mon-height '15'      # fixed popup height (otherwise sized to the agent list, min. 15)
 set -g @agents-mon-hide-windows 'agents*'  # hide matching windows from the prefix+w picker
@@ -153,8 +155,13 @@ set -g @agents-mon-wheel-jump '0.3' # seconds of stillness before a wheel scroll
 With both keys set (e.g. `@agents-mon-key 'E'`, `@agents-mon-popup-key 'e'`)
 you get `prefix+E` for the split sidebar and `prefix+e` for the floating popup.
 
+Compact mode keeps session headers, status indicators, agent names, selection,
+filters, and mouse mapping while hiding location, directory, and task title. Its
+mode persists across sidebar closes; press `c` again to restore full view and
+its prior width.
+
 In popup mode the same keybinding opens a floating window; close it with
-`q` or `Esc` inside (there is no outside toggle — the popup grabs the client).
+`q` or `Q` inside (there is no outside toggle — the popup grabs the client).
 Click-to-jump and wheel scrolling work in split mode only (tmux does not
 forward mouse events into a popup); keyboard jump works in both, and the popup
 reopens over the selected agent after a jump.

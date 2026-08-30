@@ -30,7 +30,8 @@ if [ "$mode" = "popup" ] || [ "$mode" = "float" ]; then
   PIN="${TMPDIR:-/tmp}/agents-mon-pin"
   if [ -f "$PIN" ]; then rm -f "$PIN"; exit 0; fi
   touch "$PIN"
-  width="$(tmux show-option -gqv @agents-mon-width)"
+  normal_width="$(tmux show-option -gqv @agents-mon-width)"
+  compact_width="$(tmux show-option -gqv @agents-mon-compact-width)"
   height="$(tmux show-option -gqv @agents-mon-height)"
   if [ -z "$height" ]; then
     # fit the fleet: agent row + title row each, session headers, up to 2
@@ -49,11 +50,21 @@ if [ "$mode" = "popup" ] || [ "$mode" = "float" ]; then
   # Navigation Enter jumps (popup reopens over the new window); explicit close
   # removes the pin inside sidebar.sh and ends the loop.
   while [ -f "$PIN" ]; do
-    popup_args=(-E -w "${width:-40}" -h "${height:-15}" -e "AGENTS_MON_PIN=$PIN")
+    if [ "$(tmux show-option -gqv @agents-mon-compact)" = 1 ]; then
+      width="${compact_width:-18}"
+    else
+      width="${normal_width:-40}"
+    fi
+    popup_args=(-E -w "$width" -h "${height:-15}" -e "AGENTS_MON_PIN=$PIN")
     if [ -n "$client" ]; then
       popup_args+=(-c "$client" -e "AGENTS_MON_POPUP_CLIENT=$client")
     fi
     tmux display-popup "${popup_args[@]}" "$SIDEBAR_CMD"
+    # Compact toggle closes once so tmux can recreate popup at new width.
+    if [ -f "$PIN.compact" ]; then
+      rm -f "$PIN.compact"
+      continue
+    fi
     # popup closed for a jump — the client is free now, actually switch
     if [ -f "$PIN.jump" ]; then
       target="$(cat "$PIN.jump")"; rm -f "$PIN.jump"
@@ -99,7 +110,7 @@ EOF
   fi
   # An already-running tmux server keeps its live bindings across plugin
   # upgrades. Refresh them once when the navigation contract changes.
-  if [ "$(tmux show-option -gqv @agents-mon-nav-version)" != 12 ]; then
+  if [ "$(tmux show-option -gqv @agents-mon-nav-version)" != 13 ]; then
     bash "$DIR/scripts/hooks.sh"
   fi
   # Empty panes cannot own stdin. Keep focus in the work pane and route the
@@ -129,11 +140,17 @@ if [ -n "$cur" ] && tmux list-panes -a -F '#{pane_id}' | grep -qx "$cur"; then
   fi
   tmux select-pane -t "$cur"
 else
-  width="$(tmux show-option -gqv @agents-mon-width)"
+  if [ "$(tmux show-option -gqv @agents-mon-compact)" = 1 ]; then
+    width="$(tmux show-option -gqv @agents-mon-compact-width)"
+    width="${width:-18}"
+  else
+    width="$(tmux show-option -gqv @agents-mon-width)"
+    width="${width:-30}"
+  fi
   # save layout so follow.sh can restore pane sizes when the sidebar leaves
   tmux set-option -g "@agents-mon-layout-$(tmux display-message -p '#{window_id}')" "$(tmux display-message -p '#{window_layout}')"
   # -hf: full-height split on the window's left edge
-  id="$(tmux split-window -hbf -d -l "${width:-30}" -P -F '#{pane_id}' "$PANE_CMD")"
+  id="$(tmux split-window -hbf -d -l "$width" -P -F '#{pane_id}' "$PANE_CMD")"
   tmux set-option -p -t "$id" allow-rename off
   tmux select-pane -t "$id" -T 'agents-mon'
   tmux set-option -g @agents-mon-sidebar "$id"

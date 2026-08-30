@@ -26,13 +26,19 @@ if tmux list-panes -t "$win" -F '#{pane_title}' 2>/dev/null | grep -qx agents-mo
   exit 0
 fi
 
-width="$(tmux show-option -gqv @agents-mon-width)"
+if [ "$(tmux show-option -gqv @agents-mon-compact)" = 1 ]; then
+  width="$(tmux show-option -gqv @agents-mon-compact-width)"
+  width="${width:-18}"
+else
+  width="$(tmux show-option -gqv @agents-mon-width)"
+  width="${width:-30}"
+fi
 layout="$(tmux display-message -p -t "$win" '#{window_layout}')"
 tmux set-option -g "@agents-mon-layout-$win" "$layout"
 
 # -I creates an empty input pane. Redirecting stdin closes the temporary input
 # stream immediately while tmux preserves the pane itself with pane_pid=0.
-id="$(tmux split-window -I -hbf -d -l "${width:-30}" -t "$win" \
+id="$(tmux split-window -I -hbf -d -l "$width" -t "$win" \
   -P -F '#{pane_id}' </dev/null)" || {
   tmux set-option -gu "@agents-mon-layout-$win" 2>/dev/null
   exit 1

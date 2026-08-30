@@ -24,16 +24,20 @@ sb_win="$(tmux display-message -p -t "$sb" '#{window_id}')"
 [ "$cur_win" = "$sb_win" ] && exit 0
 
 [ "$active" = "$sb" ] && exit 0
-# ponytail: fixed width from @agents-mon-width only — the pane's current
-# width can't be trusted as user intent: window resizes (e.g. two clients
-# of different sizes, window-size latest) rescale panes proportionally, and
-# remembering that scaled width ratchets the sidebar wider on every bounce
-width="$(tmux show-option -gqv @agents-mon-width)"
+# Use configured width for current density. Pane width cannot represent user
+# intent because client/window resizes scale panes proportionally.
+if [ "$(tmux show-option -gqv @agents-mon-compact)" = 1 ]; then
+  width="$(tmux show-option -gqv @agents-mon-compact-width)"
+  width="${width:-18}"
+else
+  width="$(tmux show-option -gqv @agents-mon-width)"
+  width="${width:-30}"
+fi
 # remember this window's layout so pane sizes can be restored when the
 # sidebar leaves (tmux dumps the freed space onto one adjacent pane)
 tmux set-option -g "@agents-mon-layout-${cur_win}" "$(tmux display-message -p -t "$cur_win" '#{window_layout}')"
-tmux join-pane -hbf -d -l "${width:-30}" -s "$sb" -t "$active"
-tmux resize-pane -t "$sb" -x "${width:-30}"
+tmux join-pane -hbf -d -l "$width" -s "$sb" -t "$active"
+tmux resize-pane -t "$sb" -x "$width"
 tmux set-option -g @agents-mon-sidebar-win "$cur_win"
 # ponytail: restores pre-join layout; manual resizes made while the sidebar
 # was in the window are lost on leave (fails harmlessly if panes changed)

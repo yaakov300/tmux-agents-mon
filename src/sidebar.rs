@@ -200,6 +200,7 @@ enum Key {
     Backspace,
     ClearSearch,
     CycleState,
+    ToggleCompact,
     AllStates,
     Text(String),
     Other,
@@ -225,6 +226,7 @@ fn read_key(fd: libc::c_int) -> Key {
         b'u' => Key::Versions,
         b'/' => Key::Search,
         b'f' => Key::CycleState,
+        b'c' => Key::ToggleCompact,
         0x0c => Key::AllStates, // private clear packet used by tmux/click helpers
         0x08 | 0x7f => Key::Backspace,
         0x15 => Key::ClearSearch,
@@ -315,6 +317,7 @@ pub fn send_key(name: &str) -> i32 {
             "clear-search" => vec![0x15],
             "search" => b"/".to_vec(),
             "filter" => b"f".to_vec(),
+            "compact" => b"c".to_vec(),
             "all" => vec![0x0c],
             "space" => b" ".to_vec(),
             "j" => b"j".to_vec(),
@@ -552,6 +555,7 @@ pub struct Sidebar {
     query: String,
     state_filter: Option<StateFilter>,
     search_focused: bool,
+    compact: bool,
     sel: usize,           // 1-based index into visible, like the bash script
     scroll: usize,      // first visible list line — follows the selection
     sel_pane: String,
@@ -597,6 +601,7 @@ fn new_sidebar(
         query: String::new(),
         state_filter: None,
         search_focused: false,
+        compact: false,
         sel: 1,
         scroll: 0,
         sel_pane: String::new(),
@@ -616,6 +621,10 @@ fn new_sidebar(
         daemon: None,
         overlay: None,
     };
+    sb.compact = sb
+        .tmux
+        .run("show-option -gqv @agents-mon-compact")
+        .is_ok_and(|value| value.trim() == "1");
     // seed from the previous instance's scan for an instant first frame
     if let Ok(tsv) = std::fs::read_to_string(&sb.cache_file) {
         sb.rows = scan::from_tsv(&tsv);
@@ -841,6 +850,11 @@ fn event_loop(sb: &mut Sidebar) -> bool {
                 Key::Versions => sb.versions(),
                 Key::Search => sb.focus_search(),
                 Key::CycleState => sb.cycle_state_filter(),
+                Key::ToggleCompact => {
+                    if sb.toggle_compact() {
+                        break;
+                    }
+                }
                 Key::AllStates => sb.clear_filter(),
                 Key::Quit => {
                     if sb.daemon.is_none() {
@@ -874,8 +888,11 @@ fn cleanup(rows_file: &PathBuf, pin: &Option<String>) {
     let _ = std::io::stdout().flush();
     let _ = std::fs::remove_file(rows_file);
     if let Some(p) = pin {
-        // keep the pin when a jump is pending — toggle.sh reopens the popup
-        if !std::path::Path::new(&format!("{p}.jump")).exists() {
+        // Keep pin while toggle.sh handles jump or compact-width reopen.
+        let pending = ["jump", "compact"]
+            .iter()
+            .any(|suffix| std::path::Path::new(&format!("{p}.{suffix}")).exists());
+        if !pending {
             let _ = std::fs::remove_file(p);
         }
     }
@@ -1037,6 +1054,63 @@ impl Sidebar {
         self.rebuild_visible(false);
     }
 
+    fn configured_width(&mut self) -> usize {
+        let (option, fallback) = if self.compact {
+            ("@agents-mon-compact-width", 18)
+        } else {
+            ("@agents-mon-width", 30)
+        };
+        self.tmux
+            .run(&format!("show-option -gqv {option}"))
+            .ok()
+            .and_then(|value| value.trim().parse::<usize>().ok())
+            .filter(|width| *width >= 8)
+            .unwrap_or(fallback)
+    }
+
+    /// Toggle metadata density. Popup mode exits once so toggle.sh can reopen
+    /// at the new width; daemon mode resizes every preserved sidebar in place.
+    fn toggle_compact(&mut self) -> bool {
+        self.compact = !self.compact;
+        let option_cmd = if self.compact {
+            "set-option -g @agents-mon-compact 1"
+        } else {
+            "set-option -gu @agents-mon-compact"
+        };
+        let _ = self.tmux.run(option_cmd);
+
+        if let Some(pin) = &self.pin {
+            let _ = std::fs::write(format!("{pin}.compact"), "");
+            return true;
+        }
+
+        let width = self.configured_width();
+        let panes = self
+            .tmux
+            .run("list-panes -a -f '#{==:#{pane_title},agents-mon}' -F '#{pane_id}'")
+            .unwrap_or_default();
+        let mut cmd = std::process::Command::new("tmux");
+        let mut any = false;
+        for pane in panes.lines().filter(|pane| pane.starts_with('%')) {
+            if any {
+                cmd.arg(";");
+            }
+            cmd.args(["resize-pane", "-t", pane, "-x", &width.to_string()]);
+            any = true;
+        }
+        if any {
+            let _ = cmd.status();
+        }
+        if let Some(d) = &mut self.daemon {
+            d.size.0 = width;
+            // Programmatic resize is not a user border drag.
+            d.win_sizes.clear();
+        }
+        self.scroll = 0;
+        self.last_frame.clear();
+        false
+    }
+
     fn search_key(&mut self, key: Key) {
         match key {
             Key::Quit | Key::Close => self.clear_filter(),
@@ -1068,6 +1142,7 @@ impl Sidebar {
             Key::AllStates => self.clear_filter(),
             Key::Search
             | Key::CycleState
+            | Key::ToggleCompact
             | Key::Help
             | Key::Versions
             | Key::Other => {}
@@ -1234,12 +1309,12 @@ impl Sidebar {
             return !suicide(d.seen_mirror, d.started.elapsed(), d.empty_ticks);
         }
         self.daemon.as_mut().unwrap().empty_ticks = 0;
-        let wopt: usize = self
-            .tmux
-            .run("show-option -gqv @agents-mon-width")
-            .ok()
-            .and_then(|s| s.trim().parse().ok())
-            .unwrap_or(30);
+        let wopt = self.configured_width();
+        let width_option = if self.compact {
+            "@agents-mon-compact-width"
+        } else {
+            "@agents-mon-width"
+        };
         // One sidebar per window. mirror-add.sh claims atomically now, but servers
         // that ran the old racy version still carry duplicates. Keep the first —
         // a -hbf split takes index 0, so that's the newest and the one actually at
@@ -1301,7 +1376,7 @@ impl Sidebar {
         if let Some((src_pane, width)) = drag {
             let _ = self
                 .tmux
-                .run(&format!("set-option -g @agents-mon-width {width}"));
+                .run(&format!("set-option -g {width_option} {width}"));
             // resize the OTHER sidebars via forked tmux (hook run-shell
             // echoes on the control pipe would desync it); the dragged pane
             // stays untouched so nothing ever fights the user's drag
@@ -1509,25 +1584,36 @@ impl Sidebar {
                 let selected = Some(n) == cursor;
                 let mark = cursor_mark(selected, self.plugin_selected, &r.state);
                 let dot = self.dot(&r.state);
-                let win = r.loc.splitn(2, ':').nth(1).unwrap_or("");
-                let mut rest = format!("{win} {}", r.cwd);
-                let agent_len = r.agent.chars().count();
-                let avail = cols.saturating_sub(6 + agent_len);
-                if avail > 0 {
-                    rest = rest.chars().take(avail).collect();
-                }
                 let row_bg = if selected {
                     state_bg(&r.state, self.plugin_selected)
                 } else {
                     ""
                 };
-                let row = format!(" {mark}{dot} {E}[1m{}{E}[0m {E}[2m{rest}{E}[0m", r.agent);
-                let width = 6 + agent_len + rest.chars().count();
+                let (row, width) = if self.compact {
+                    let agent: String = r.agent.chars().take(cols.saturating_sub(5)).collect();
+                    let width = 5 + agent.chars().count();
+                    (format!(" {mark}{dot} {E}[1m{agent}{E}[0m"), width)
+                } else {
+                    let win = r.loc.splitn(2, ':').nth(1).unwrap_or("");
+                    let mut rest = format!("{win} {}", r.cwd);
+                    let agent_len = r.agent.chars().count();
+                    let avail = cols.saturating_sub(6 + agent_len);
+                    if avail > 0 {
+                        rest = rest.chars().take(avail).collect();
+                    }
+                    (
+                        format!(
+                            " {mark}{dot} {E}[1m{}{E}[0m {E}[2m{rest}{E}[0m",
+                            r.agent
+                        ),
+                        6 + agent_len + rest.chars().count(),
+                    )
+                };
                 lines.push((
                     format!("{}{E}[K\n", bar(&row, row_bg, cols, width)),
                     &r.pane,
                 ));
-                if !r.title.is_empty() {
+                if !self.compact && !r.title.is_empty() {
                     let t: String = r.title.chars().take(cols.saturating_sub(5)).collect();
                     let line = format!("     {E}[2m{t}{E}[0m");
                     let width = 5 + t.chars().count();
@@ -1608,6 +1694,7 @@ impl Sidebar {
  Enter/l  jump to agent\n\
  /        live search; Enter enables j/k\n\
  f        select next state filter\n\
+ c        compact / full view\n\
  Esc      clear filters / show all\n\
  u        update / switch version\n\
 {quit_keys}\n\
@@ -1815,6 +1902,10 @@ mod tests {
         assert!(matches!(read_key(fds[0]), Key::Down));
         feed(b"u");
         assert!(matches!(read_key(fds[0]), Key::Versions));
+        feed(b"c");
+        assert!(matches!(read_key(fds[0]), Key::ToggleCompact));
+        feed(&[0, b'c']);
+        assert!(matches!(read_key(fds[0]), Key::Text(s) if s == "c"));
         feed(&[0, b'q']);
         assert!(matches!(read_key(fds[0]), Key::Text(s) if s == "q"));
         unsafe {
