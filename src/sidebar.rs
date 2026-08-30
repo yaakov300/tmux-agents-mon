@@ -1610,9 +1610,16 @@ impl Sidebar {
                     ""
                 };
                 let (row, width) = if self.compact {
-                    let agent: String = r.agent.chars().take(cols.saturating_sub(5)).collect();
-                    let width = 5 + agent.chars().count();
-                    (format!(" {mark}{dot} {E}[1m{agent}{E}[0m"), width)
+                    let win = r.loc.splitn(2, ':').nth(1).unwrap_or("");
+                    let win: String = win.chars().take(cols.saturating_sub(6)).collect();
+                    // Preserve window.pane identity; truncate agent name first.
+                    let avail = cols.saturating_sub(6 + win.chars().count());
+                    let agent: String = r.agent.chars().take(avail).collect();
+                    let width = 6 + agent.chars().count() + win.chars().count();
+                    (
+                        format!(" {mark}{dot} {E}[1m{agent}{E}[0m {E}[2m{win}{E}[0m"),
+                        width,
+                    )
                 } else {
                     let win = r.loc.splitn(2, ':').nth(1).unwrap_or("");
                     let mut rest = format!("{win} {}", r.cwd);

@@ -631,7 +631,8 @@ for _ in $(seq 1 60); do
     sed -n '/❯/p' | head -n 1)"
   compact_option="$(tmux -S "$sock" show-option -gqv @agents-mon-compact)"
   if [ "$compact_widths" = '16 ' ] && [ "$compact_option" = 1 ] \
-    && printf '%s' "$compact_cursor" | grep -Eq 'codex[[:space:]]*$'; then
+    && printf '%s' "$compact_cursor" | grep -Eq \
+      'codex[[:space:]]+[0-9]+\.[0-9]+[[:space:]]*$'; then
     compact_works=1
     break
   fi

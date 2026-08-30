@@ -155,8 +155,9 @@ set -g @agents-mon-wheel-jump '0.3' # seconds of stillness before a wheel scroll
 With both keys set (e.g. `@agents-mon-key 'E'`, `@agents-mon-popup-key 'e'`)
 you get `prefix+E` for the split sidebar and `prefix+e` for the floating popup.
 
-Compact mode keeps session headers, status indicators, agent names, selection,
-filters, and mouse mapping while hiding location, directory, and task title. Its
+Compact mode keeps session headers, status indicators, agent names,
+`window.pane` numbers, selection, filters, and mouse mapping while hiding
+other location metadata, directory, and task title. Its
 mode persists across sidebar closes; press `c` again to restore full view and
 its prior width. Starting `/` search from compact mode also restores full width
 automatically before opening search.

@@ -360,9 +360,14 @@ EOF
       fi
       color_dot "$state"
       if [ -n "$compact" ]; then
-        agent_display="${agent:0:cols-5}"
-        line=" $mark$dot $E[1m$agent_display$E[0m"
-        bar "$line" $((5 + ${#agent_display})) "$row_bg"
+        rest="${loc#*:}"
+        avail=$((cols - 6)); [ "$avail" -lt 0 ] && avail=0
+        rest="${rest:0:$avail}"
+        # Preserve window.pane identity; truncate agent name first.
+        avail=$((cols - 6 - ${#rest})); [ "$avail" -lt 0 ] && avail=0
+        agent_display="${agent:0:$avail}"
+        line=" $mark$dot $E[1m$agent_display$E[0m $E[2m$rest$E[0m"
+        bar "$line" $((6 + ${#agent_display} + ${#rest})) "$row_bg"
       else
         rest="${loc#*:} $cwd"
         avail=$((cols - 6 - ${#agent}))
