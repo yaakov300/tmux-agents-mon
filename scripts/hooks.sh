@@ -10,7 +10,7 @@ if awk -v v="$ver" 'BEGIN { exit !(v + 0 >= 3.2) }'; then
   # Server-side serialization also kills the old two-hooks race, no lock.
   # Guard: sidebar open, not already in this window, and never follow into pi.
   guard='#{&&:#{&&:#{!=:#{@agents-mon-sidebar},},#{!=:#{@agents-mon-sidebar-win},#{window_id}}},#{!=:#{session_name},pi}}'
-  width='#{?#{==:#{@agents-mon-compact},1},#{?#{@agents-mon-compact-width},#{@agents-mon-compact-width},18},#{?#{@agents-mon-width},#{@agents-mon-width},30}}'
+  width='#{?#{==:#{@agents-mon-compact},1},#{?#{@agents-mon-compact-width},#{@agents-mon-compact-width},16},#{?#{@agents-mon-width},#{@agents-mon-width},30}}'
   body="run -C 'set -g @agents-mon-prev-win #{@agents-mon-sidebar-win}'"
   body="$body ; run -C 'set -g @agents-mon-layout-#{window_id} \"#{window_layout}\"'"
   body="$body ; run -C 'join-pane -hbf -d -l $width -s #{@agents-mon-sidebar} -t #{pane_id}'"

@@ -625,6 +625,7 @@ fn new_sidebar(
         .tmux
         .run("show-option -gqv @agents-mon-compact")
         .is_ok_and(|value| value.trim() == "1");
+    sb.search_focused = std::env::var("AGENTS_MON_START_SEARCH").as_deref() == Ok("1");
     // seed from the previous instance's scan for an instant first frame
     if let Ok(tsv) = std::fs::read_to_string(&sb.cache_file) {
         sb.rows = scan::from_tsv(&tsv);
@@ -848,7 +849,11 @@ fn event_loop(sb: &mut Sidebar) -> bool {
                 }
                 Key::Help => sb.help(),
                 Key::Versions => sb.versions(),
-                Key::Search => sb.focus_search(),
+                Key::Search => {
+                    if sb.focus_search() {
+                        break;
+                    }
+                }
                 Key::CycleState => sb.cycle_state_filter(),
                 Key::ToggleCompact => {
                     if sb.toggle_compact() {
@@ -888,8 +893,8 @@ fn cleanup(rows_file: &PathBuf, pin: &Option<String>) {
     let _ = std::io::stdout().flush();
     let _ = std::fs::remove_file(rows_file);
     if let Some(p) = pin {
-        // Keep pin while toggle.sh handles jump or compact-width reopen.
-        let pending = ["jump", "compact"]
+        // Keep pin while toggle.sh handles jump or a mode-driven reopen.
+        let pending = ["jump", "compact", "search"]
             .iter()
             .any(|suffix| std::path::Path::new(&format!("{p}.{suffix}")).exists());
         if !pending {
@@ -1034,10 +1039,21 @@ impl Sidebar {
         self.scroll = 0;
     }
 
-    fn focus_search(&mut self) {
+    /// true when popup must close once and reopen full-width in search mode.
+    fn focus_search(&mut self) -> bool {
+        if self.compact {
+            self.compact = false;
+            let _ = self.tmux.run("set-option -gu @agents-mon-compact");
+            if let Some(pin) = &self.pin {
+                let _ = std::fs::write(format!("{pin}.search"), "");
+                return true;
+            }
+            self.resize_sidebars();
+        }
         self.state_filter = None;
         self.search_focused = true;
         self.rebuild_visible(false);
+        false
     }
 
     fn cycle_state_filter(&mut self) {
@@ -1056,7 +1072,7 @@ impl Sidebar {
 
     fn configured_width(&mut self) -> usize {
         let (option, fallback) = if self.compact {
-            ("@agents-mon-compact-width", 18)
+            ("@agents-mon-compact-width", 16)
         } else {
             ("@agents-mon-width", 30)
         };
@@ -1068,22 +1084,7 @@ impl Sidebar {
             .unwrap_or(fallback)
     }
 
-    /// Toggle metadata density. Popup mode exits once so toggle.sh can reopen
-    /// at the new width; daemon mode resizes every preserved sidebar in place.
-    fn toggle_compact(&mut self) -> bool {
-        self.compact = !self.compact;
-        let option_cmd = if self.compact {
-            "set-option -g @agents-mon-compact 1"
-        } else {
-            "set-option -gu @agents-mon-compact"
-        };
-        let _ = self.tmux.run(option_cmd);
-
-        if let Some(pin) = &self.pin {
-            let _ = std::fs::write(format!("{pin}.compact"), "");
-            return true;
-        }
-
+    fn resize_sidebars(&mut self) {
         let width = self.configured_width();
         let panes = self
             .tmux
@@ -1108,6 +1109,25 @@ impl Sidebar {
         }
         self.scroll = 0;
         self.last_frame.clear();
+    }
+
+    /// Toggle metadata density. Popup mode exits once so toggle.sh can reopen
+    /// at the new width; daemon mode resizes every preserved sidebar in place.
+    fn toggle_compact(&mut self) -> bool {
+        self.compact = !self.compact;
+        let option_cmd = if self.compact {
+            "set-option -g @agents-mon-compact 1"
+        } else {
+            "set-option -gu @agents-mon-compact"
+        };
+        let _ = self.tmux.run(option_cmd);
+
+        if let Some(pin) = &self.pin {
+            let _ = std::fs::write(format!("{pin}.compact"), "");
+            return true;
+        }
+
+        self.resize_sidebars();
         false
     }
 

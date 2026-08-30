@@ -17,7 +17,8 @@ cleanup() {
   rm -f "$STATE_FILE" "$ROWS_FILE" "$SCAN_FILE" "$SCAN_FILE.partial"
   if [ -n "${AGENTS_MON_PIN:-}" ] \
     && [ ! -f "$AGENTS_MON_PIN.jump" ] \
-    && [ ! -f "$AGENTS_MON_PIN.compact" ]; then
+    && [ ! -f "$AGENTS_MON_PIN.compact" ] \
+    && [ ! -f "$AGENTS_MON_PIN.search" ]; then
     rm -f "$AGENTS_MON_PIN"
   fi
   exit 0
@@ -68,7 +69,8 @@ debounced=""  # complete scan; cache/status stay unfiltered
 visible=""    # filtered rows used by render/navigation/clicks
 query=""
 state_filter=""
-search_focused=""
+search_focused="${AGENTS_MON_START_SEARCH:-}"
+[ "$search_focused" = 1 ] || search_focused=""
 compact="$(tmux show-option -gqv @agents-mon-compact)"
 [ "$compact" = 1 ] || compact=""
 total_rows=0
@@ -127,6 +129,17 @@ select_first_match() {
 }
 
 focus_search() {
+  local width
+  if [ -n "$compact" ]; then
+    compact=""
+    tmux set-option -gu @agents-mon-compact 2>/dev/null
+    if [ -n "${AGENTS_MON_PIN:-}" ]; then
+      : > "$AGENTS_MON_PIN.search"
+      exit 0
+    fi
+    width="$(tmux show-option -gqv @agents-mon-width)"
+    tmux resize-pane -t "${TMUX_PANE:-}" -x "${width:-30}" 2>/dev/null
+  fi
   state_filter=""
   search_focused=1
   apply_filters
@@ -162,7 +175,7 @@ toggle_compact() {
     compact=1
     tmux set-option -g @agents-mon-compact 1
     width="$(tmux show-option -gqv @agents-mon-compact-width)"
-    width="${width:-18}"
+    width="${width:-16}"
   fi
   if [ -n "${AGENTS_MON_PIN:-}" ]; then
     : > "$AGENTS_MON_PIN.compact"

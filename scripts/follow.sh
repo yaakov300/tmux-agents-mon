@@ -28,7 +28,7 @@ sb_win="$(tmux display-message -p -t "$sb" '#{window_id}')"
 # intent because client/window resizes scale panes proportionally.
 if [ "$(tmux show-option -gqv @agents-mon-compact)" = 1 ]; then
   width="$(tmux show-option -gqv @agents-mon-compact-width)"
-  width="${width:-18}"
+  width="${width:-16}"
 else
   width="$(tmux show-option -gqv @agents-mon-width)"
   width="${width:-30}"

@@ -49,20 +49,29 @@ if [ "$mode" = "popup" ] || [ "$mode" = "float" ]; then
   fi
   # Navigation Enter jumps (popup reopens over the new window); explicit close
   # removes the pin inside sidebar.sh and ends the loop.
+  start_search=0
   while [ -f "$PIN" ]; do
     if [ "$(tmux show-option -gqv @agents-mon-compact)" = 1 ]; then
-      width="${compact_width:-18}"
+      width="${compact_width:-16}"
     else
       width="${normal_width:-40}"
     fi
-    popup_args=(-E -w "$width" -h "${height:-15}" -e "AGENTS_MON_PIN=$PIN")
+    popup_args=(-E -w "$width" -h "${height:-15}" -e "AGENTS_MON_PIN=$PIN" \
+      -e "AGENTS_MON_START_SEARCH=$start_search")
     if [ -n "$client" ]; then
       popup_args+=(-c "$client" -e "AGENTS_MON_POPUP_CLIENT=$client")
     fi
+    start_search=0
     tmux display-popup "${popup_args[@]}" "$SIDEBAR_CMD"
     # Compact toggle closes once so tmux can recreate popup at new width.
     if [ -f "$PIN.compact" ]; then
       rm -f "$PIN.compact"
+      continue
+    fi
+    # Search from compact mode reopens full-width with input already focused.
+    if [ -f "$PIN.search" ]; then
+      rm -f "$PIN.search"
+      start_search=1
       continue
     fi
     # popup closed for a jump — the client is free now, actually switch
@@ -142,7 +151,7 @@ if [ -n "$cur" ] && tmux list-panes -a -F '#{pane_id}' | grep -qx "$cur"; then
 else
   if [ "$(tmux show-option -gqv @agents-mon-compact)" = 1 ]; then
     width="$(tmux show-option -gqv @agents-mon-compact-width)"
-    width="${width:-18}"
+    width="${width:-16}"
   else
     width="$(tmux show-option -gqv @agents-mon-width)"
     width="${width:-30}"

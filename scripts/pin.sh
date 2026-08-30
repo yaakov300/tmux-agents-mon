@@ -4,7 +4,7 @@
 # every agents-mon pane back (covers both single-sidebar and mirror mode).
 if [ "$(tmux show-option -gqv @agents-mon-compact)" = 1 ]; then
   w="$(tmux show-option -gqv @agents-mon-compact-width)"
-  w="${w:-18}"
+  w="${w:-16}"
 else
   w="$(tmux show-option -gqv @agents-mon-width)"
   w="${w:-30}"

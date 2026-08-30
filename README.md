@@ -142,7 +142,7 @@ set -g status-right '#{agents_mon} | %H:%M'
 set -g @agents-mon-key 'A'          # toggle keybinding (prefix table)
 set -g @agents-mon-popup-key 'e'    # optional: dedicated key that always opens the popup
 set -g @agents-mon-width '30'       # full-view width (defaults: split 30, popup 40)
-set -g @agents-mon-compact-width '18' # width after pressing c (default: 18)
+set -g @agents-mon-compact-width '16' # width after pressing c (default: 16)
 set -g @agents-mon-display 'popup'  # make the main key open a popup (default: left split)
 set -g @agents-mon-height '15'      # fixed popup height (otherwise sized to the agent list, min. 15)
 set -g @agents-mon-hide-windows 'agents*'  # hide matching windows from the prefix+w picker
@@ -158,7 +158,8 @@ you get `prefix+E` for the split sidebar and `prefix+e` for the floating popup.
 Compact mode keeps session headers, status indicators, agent names, selection,
 filters, and mouse mapping while hiding location, directory, and task title. Its
 mode persists across sidebar closes; press `c` again to restore full view and
-its prior width.
+its prior width. Starting `/` search from compact mode also restores full width
+automatically before opening search.
 
 In popup mode the same keybinding opens a floating window; close it with
 `q` or `Q` inside (there is no outside toggle — the popup grabs the client).
